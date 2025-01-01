@@ -4,7 +4,7 @@ from shapely.geometry import box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 from ultralytics import YOLO
-from ultralytics.engine.results import Results
+from ultralytics.engine.results import Results, Boxes
 
 
 class YOLOInferenceWrapper:
@@ -25,7 +25,11 @@ class YOLOInferenceWrapper:
 
     def infer_on_crop(self, crop: np.ndarray):
         results = self.model(crop, verbose=False)
-        return results[0].boxes.xyxy.cpu().numpy()  # (xmin, ymin, xmax, ymax, confidence, class)
+        xyxy = results[0].boxes.xyxy.cpu().numpy()
+        cls = results[0].boxes.cls.cpu().numpy().reshape(-1, 1)
+        conf = results[0].boxes.conf.cpu().numpy().reshape(-1, 1)
+        final_results = np.concatenate([xyxy, conf, cls], axis=1)
+        return final_results  # (xmin, ymin, xmax, ymax, confidence, class)
 
     def merge_detections(self, detections, iou_threshold=0.5):
         geometries = [box(*det[:4]) for det in detections]
@@ -88,7 +92,7 @@ class YOLOInferenceWrapper:
         # Преобразование в формат Results
         boxes = np.array([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
         result = Results(orig_img=image, path=None, names=self.model.names)
-        result.boxes = boxes
+        result.boxes = Boxes(boxes, image.shape[:2])
         return result
 
 
