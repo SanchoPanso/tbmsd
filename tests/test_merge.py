@@ -33,7 +33,10 @@ def test_merge_detections_with_overlap(yolo_wrapper: YOLOInferenceWrapper):
     assert merged_bounds[1] <= 0  # ymin
     assert merged_bounds[2] >= 15  # xmax
     assert merged_bounds[3] >= 15  # ymax
-    assert abs(result[0][4] - 0.85) < 1e-3  # Проверка уверенности
+    expected_confidence = (
+        0.9 * 75 / 175 + 0.8 * 75 / 175 + (1 - (1 - 0.9) * (1 - 0.8)) * 25 / 175
+    )  # Учитываем перекрытие и неперекрытые области
+    assert abs(result[0][4] - expected_confidence) < 1e-3
 
 
 def test_merge_detections_different_classes(yolo_wrapper: YOLOInferenceWrapper):
@@ -52,8 +55,10 @@ def test_merge_detections_same_class_weighted_confidence(yolo_wrapper: YOLOInfer
     ]
     result = yolo_wrapper.merge_detections(detections)
     assert len(result) == 1  # Объекты должны объединиться
-    merged_confidence = result[0][4]
-    assert abs(merged_confidence - 0.85) < 1e-3  # Средневзвешенная уверенность
+    expected_confidence = (
+        0.9 * 75 / 175 + 0.8 * 75 / 175 + (1 - (1 - 0.9) * (1 - 0.8)) * 25 / 175
+    )  # Учитываем перекрытие и неперекрытые области
+    assert abs(result[0][4] - expected_confidence) < 1e-3
 
 
 def test_merge_detections_empty_input(yolo_wrapper: YOLOInferenceWrapper):

@@ -53,14 +53,40 @@ class YOLOInferenceWrapper:
 
             # Объединение объектов
             combined_geom = unary_union([indexed_geometries[idx][0] for idx in overlap_indices])
-            area_weights = [indexed_geometries[idx][0].area for idx in overlap_indices]
-            total_area = sum(area_weights)
 
-            # Расчет уверенности как средневзвешенной
-            weighted_conf = sum(
-                indexed_geometries[idx][1] * area_weights[i] / total_area
-                for i, idx in enumerate(overlap_indices)
-            )
+            # Вычисление общей площади и весов для областей
+            total_area = combined_geom.area
+
+            intersection_subareas = []
+            for i in overlap_indices:
+                for j in overlap_indices:
+                    if i == j:
+                        continue
+
+                    intersection_subarea = indexed_geometries[i][0].intersection(indexed_geometries[j][0]).area
+                    intersection_subareas.append(intersection_subarea)
+
+            intersection_area = sum(intersection_subareas) / 2
+
+            non_intersection_areas = []
+            for i in overlap_indices:
+                geom = indexed_geometries[i][0]
+                non_intersection_area = geom.area - sum(
+                    geom.intersection(indexed_geometries[j][0]).area for j in overlap_indices if j != i
+                )
+                non_intersection_areas.append(non_intersection_area)
+            
+            # Расчет уверенности с учётом взвешенной суммы областей
+            non_intersect_conf = 0
+            for i, idx in enumerate(overlap_indices):
+                confidence = indexed_geometries[idx][1] * (non_intersection_areas[i] / total_area)
+                non_intersect_conf += confidence
+
+            intersect_conf = (1 - np.prod([1 - indexed_geometries[idx][1] for idx in overlap_indices])) \
+                             * (intersection_area / total_area)
+            
+            weighted_conf = non_intersect_conf + intersect_conf
+
             # Класс выбирается как наиболее частый
             most_common_class = max(
                 (indexed_geometries[idx][2] for idx in overlap_indices),
@@ -76,6 +102,7 @@ class YOLOInferenceWrapper:
             result.append([xmin, ymin, xmax, ymax, conf, cls])
 
         return result
+
 
     def detect(self, image: np.ndarray, overlap: int = 50):
         crops = self.split_image(image, overlap)
