@@ -42,8 +42,9 @@ class YOLOInferenceWrapper:
         for i, (geom, conf, cls) in enumerate(indexed_geometries):
             if i in used:
                 continue
-            overlaps = tree.query(geom)
-            overlap_indices = [indexed_geometries.index((g, c, cl)) for g, c, cl in indexed_geometries if g in overlaps]
+
+            overlap_indices = tree.query(geom)
+            overlap_indices = [idx for idx in overlap_indices if cls == indexed_geometries[idx][2]]
             used.update(overlap_indices)
 
             # Объединение объектов
