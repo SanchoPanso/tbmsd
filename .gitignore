@@ -3,3 +3,5 @@ venv
 .venv
 poetry.lock
 **/*.pt
+runs
+datasets
