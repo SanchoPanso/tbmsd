@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from shapely.geometry import box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
@@ -29,7 +30,9 @@ class PatchDetectionPredictor(yolo.detect.DetectionPredictor):
         merged_detections = self.merge_detections(detections)
 
         # Преобразование в формат Results
-        boxes = np.array([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        # boxes = np.array([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        
         result = Results(orig_img=source, path=None, names=self.model.names)
         result.boxes = Boxes(boxes, source.shape[:2])
         return [result]
@@ -99,20 +102,3 @@ class PatchDetectionPredictor(yolo.detect.DetectionPredictor):
 
         return result
 
-    def detect(self, image: np.ndarray, overlap: int = 50):
-        crops = self.split_image(image, overlap)
-        detections = []
-        for crop, x_offset, y_offset in crops:
-            crop_detections = self.infer_on_crop(crop)
-            for det in crop_detections:
-                det[:4] += [x_offset, y_offset, x_offset, y_offset]  # Adjust to global coords
-                detections.append(det)
-
-        # Получение объединенных детекций
-        merged_detections = self.merge_detections(detections)
-
-        # Преобразование в формат Results
-        boxes = np.array([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
-        result = Results(orig_img=image, path=None, names=self.model.names)
-        result.boxes = Boxes(boxes, image.shape[:2])
-        return result

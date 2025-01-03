@@ -1,7 +1,7 @@
 import sys
 import pytest
 from shapely.geometry import box
-from yolo_patch_fusion.wrapper import YOLOInferenceWrapper  # Замените на реальный модуль, где находится ваш класс
+from yolo_patch_fusion.model.wrapper import YOLOInferenceWrapper  # Замените на реальный модуль, где находится ваш класс
 
 
 @pytest.fixture

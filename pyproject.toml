@@ -10,6 +10,7 @@ python = ">=3.9, <4"
 ultralytics = "^8.3.55"
 shapely = "^2.0.6"
 pytest = "^8.3.4"
+pycocotools = "^2.0.8"
 
 
 [build-system]

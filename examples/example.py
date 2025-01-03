@@ -1,5 +1,5 @@
 import cv2
-from yolo_patch_fusion.wrapper import YOLOInferenceWrapper
+from yolo_patch_fusion.model.wrapper import YOLOInferenceWrapper
 
 
 wrapper = YOLOInferenceWrapper('yolo11n.pt')

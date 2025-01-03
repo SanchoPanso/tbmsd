@@ -4,8 +4,9 @@ from ultralytics.engine.model import Model
 from ultralytics.models import yolo
 from ultralytics.nn.tasks import ClassificationModel, DetectionModel, OBBModel, PoseModel, SegmentationModel, WorldModel
 from ultralytics.utils import ROOT, yaml_load
-from yolo_patch_fusion.tasks import PatchDetectionModel
-from yolo_patch_fusion.predictor import PatchDetectionPredictor
+from yolo_patch_fusion.model.tasks import PatchDetectionModel
+from yolo_patch_fusion.model.predictor import PatchDetectionPredictor
+from yolo_patch_fusion.model.validator import PatchDetectionValidator
 
 
 class YOLOPatch(Model):
@@ -24,7 +25,7 @@ class YOLOPatch(Model):
             "detect": {
                 "model": DetectionModel,
                 "trainer": yolo.detect.DetectionTrainer,
-                "validator": yolo.detect.DetectionValidator,
+                "validator": PatchDetectionValidator,
                 "predictor": PatchDetectionPredictor,
             }
         }

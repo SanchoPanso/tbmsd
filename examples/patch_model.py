@@ -1,5 +1,5 @@
 import cv2
-from yolo_patch_fusion.model import YOLOPatch
+from yolo_patch_fusion.model.model import YOLOPatch
 from ultralytics import YOLO
 
 
