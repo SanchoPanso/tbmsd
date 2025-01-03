@@ -10,6 +10,8 @@ from ultralytics.utils import DEFAULT_CFG
 
 class PatchDetectionPredictor(yolo.detect.DetectionPredictor):
     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
+        if 'overlap' in overrides:
+            overrides.pop('overlap')
         super().__init__(cfg, overrides, _callbacks)
         self.img_size = 640
 
