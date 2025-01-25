@@ -1,7 +1,7 @@
 import cv2
 import torch
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from shapely.geometry import box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
@@ -10,13 +10,12 @@ from ultralytics.engine.results import Results, Boxes
 
 
 class YOLOPatchInferenceWrapper:
-    def __init__(self, model_path: str, img_size: int = 640):
+    def __init__(self, model_path: str):
         self.model = YOLO(model_path)
-        self.img_size = img_size
 
-    def __call__(self, source: np.ndarray, overlap: int = 50) -> List[Results]:
+    def __call__(self, source: np.ndarray, img_size: int = 640, overlap: int = 50) -> List[Results]:
         # Split image into crops
-        crops = self.split_image(source, overlap)
+        crops = self.split_image(source, img_size, overlap)
         
         # Detect object in each crop separately 
         detections = []
@@ -36,14 +35,18 @@ class YOLOPatchInferenceWrapper:
 
         return [result]
     
-    def split_image(self, image: np.ndarray, overlap: int = 50):
+    @property
+    def names(self):
+        return self.model.names
+    
+    def split_image(self, image: np.ndarray, img_size: int, overlap: int) -> List[Tuple[np.ndarray, float, float]]:
         h, w, _ = image.shape
-        step = self.img_size - overlap
+        step = img_size - overlap
         crops = []
         for y in range(0, h, step):
             for x in range(0, w, step):
-                x_end = min(x + self.img_size, w)
-                y_end = min(y + self.img_size, h)
+                x_end = min(x + img_size, w)
+                y_end = min(y + img_size, h)
                 crops.append((image[y:y_end, x:x_end], x, y))
         return crops
     

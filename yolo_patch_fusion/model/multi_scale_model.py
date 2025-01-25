@@ -1,15 +1,16 @@
 import cv2
 import torch
 import numpy as np
-from yolo_patch_fusion.model.model import YOLOPatch
+from typing import List, Sequence
+from yolo_patch_fusion.model.wrapper import YOLOPatchInferenceWrapper
 from ultralytics.engine.results import Results, Boxes
 
 
 class MultiPatchInference:
-    def __init__(self, wrapper: YOLOPatch):
+    def __init__(self, wrapper: YOLOPatchInferenceWrapper):
         self.wrapper = wrapper
 
-    def infer_with_multiple_patches(self, image: np.ndarray, patch_sizes: list, overlap: int = 50):
+    def __call__(self, image: np.ndarray, patch_sizes: Sequence[int] = (640,), overlap: int = 50) -> List[Results]:
         """
         Выполняет инференс изображения с разными размерами патчей.
         
@@ -21,18 +22,15 @@ class MultiPatchInference:
         all_detections = []
 
         for size in patch_sizes:
-            # Устанавливаем размер патча в обертке
-            self.wrapper.img_size = size
             # Выполняем инференс для текущего размера патча
-            results = self.wrapper.predict(image)
-            # Извлекаем детекции из результатов
-            for box in results[0].boxes.data:
-                all_detections.append(box.cpu().numpy())
+            results = self.wrapper(image, size, overlap)[0]
+            all_detections.append(results)
 
         # Объединяем детекции
-        return self.combine_results(all_detections, image)
+        results = self.combine_results(all_detections, image)
+        return [results]
 
-    def combine_results(self, detections: list, image: np.ndarray, iou_threshold: float = 0.5):
+    def combine_results(self, results: List[Results], image: np.ndarray, iou_threshold: float = 0.5) -> Results:
         """
         Объединяет результаты инференса, устраняя пересечения с высоким IoU.
         
@@ -41,7 +39,12 @@ class MultiPatchInference:
         :param iou_threshold: Порог IoU для объединения детекций.
         :return: Итоговый объект Results с объединенными детекциями.
         """
+
         # Преобразование детекций в массив numpy
+        detections = []
+        for result in results:
+            for box in result.boxes.data:
+                detections.append(box.cpu().numpy())
         detections = np.array(detections)
 
         # Если нет детекций, возвращаем пустой результат
@@ -67,10 +70,10 @@ class MultiPatchInference:
         # Преобразуем в формат Results
         boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
         
-        final_result = Results(orig_img=image, path=None, names=self.wrapper.names)
+        final_result = Results(orig_img=image, path=None, names=self.wrapper.model.names)
         final_result.boxes = Boxes(boxes, image.shape[:2])
 
-        return [final_result]
+        return final_result
 
     @staticmethod
     def _calculate_iou(box: np.ndarray, boxes: np.ndarray):
@@ -97,24 +100,4 @@ class MultiPatchInference:
         union = box_area + boxes_area - intersection
         iou = intersection / union
         return iou
-
-
-if __name__ == '__main__':
-    # Создаем обертку YOLO
-    wrapper = YOLOPatch("yolo11n.pt")
-
-    # Создаем класс MultiPatchInference
-    multi_patch_inference = MultiPatchInference(wrapper)
-
-    # Входное изображение
-    image = cv2.imread("/home/alex/workspace/YOLOPatchFusion/images/zidane2.jpg")
-
-    # Инференс с разными размерами патчей
-    patch_sizes = [320, 640, 1024]
-    results = multi_patch_inference.infer_with_multiple_patches(image, patch_sizes, overlap=50)[0]
-
-    # Результаты
-    print(results.boxes)
-
-    results.save('show.jpg')
 
