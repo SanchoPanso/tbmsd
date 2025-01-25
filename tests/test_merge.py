@@ -1,16 +1,16 @@
 import sys
 import pytest
 from shapely.geometry import box
-from yolo_patch_fusion.model.wrapper import YOLOInferenceWrapper  # Замените на реальный модуль, где находится ваш класс
+from yolo_patch_fusion.model.wrapper import YOLOPatchInferenceWrapper  # Замените на реальный модуль, где находится ваш класс
 
 
 @pytest.fixture
 def yolo_wrapper():
     # Создаем объект обертки YOLO
-    return YOLOInferenceWrapper("yolo11n.pt")
+    return YOLOPatchInferenceWrapper("yolo11n.pt")
 
 
-def test_merge_detections_no_overlap(yolo_wrapper: YOLOInferenceWrapper):
+def test_merge_detections_no_overlap(yolo_wrapper: YOLOPatchInferenceWrapper):
     detections = [
         [0, 0, 10, 10, 0.9, 1],
         [20, 20, 30, 30, 0.8, 2],
@@ -21,7 +21,7 @@ def test_merge_detections_no_overlap(yolo_wrapper: YOLOInferenceWrapper):
     assert result[1][4] == 0.8
 
 
-def test_merge_detections_with_overlap(yolo_wrapper: YOLOInferenceWrapper):
+def test_merge_detections_with_overlap(yolo_wrapper: YOLOPatchInferenceWrapper):
     detections = [
         [0, 0, 10, 10, 0.9, 1],
         [5, 5, 15, 15, 0.8, 1],
@@ -36,7 +36,7 @@ def test_merge_detections_with_overlap(yolo_wrapper: YOLOInferenceWrapper):
     assert abs(result[0][4] - 0.85) < 1e-3  # Проверка уверенности
 
 
-def test_merge_detections_different_classes(yolo_wrapper: YOLOInferenceWrapper):
+def test_merge_detections_different_classes(yolo_wrapper: YOLOPatchInferenceWrapper):
     detections = [
         [0, 0, 10, 10, 0.9, 1],
         [5, 5, 15, 15, 0.8, 2],
@@ -45,7 +45,7 @@ def test_merge_detections_different_classes(yolo_wrapper: YOLOInferenceWrapper):
     assert len(result) == 2  # Объекты не должны объединяться из-за разных классов
 
 
-def test_merge_detections_same_class_weighted_confidence(yolo_wrapper: YOLOInferenceWrapper):
+def test_merge_detections_same_class_weighted_confidence(yolo_wrapper: YOLOPatchInferenceWrapper):
     detections = [
         [0, 0, 10, 10, 0.9, 1],  # Площадь = 100
         [5, 5, 15, 15, 0.8, 1],  # Площадь = 100
@@ -56,7 +56,7 @@ def test_merge_detections_same_class_weighted_confidence(yolo_wrapper: YOLOInfer
     assert abs(merged_confidence - 0.85) < 1e-3  # Средневзвешенная уверенность
 
 
-def test_merge_detections_empty_input(yolo_wrapper: YOLOInferenceWrapper):
+def test_merge_detections_empty_input(yolo_wrapper: YOLOPatchInferenceWrapper):
     detections = []
     result = yolo_wrapper.merge_detections(detections)
     assert result == []  # Для пустого ввода результат тоже должен быть пустым

@@ -1,8 +1,8 @@
 import cv2
-from yolo_patch_fusion.model.wrapper import YOLOInferenceWrapper
+from yolo_patch_fusion.model.wrapper import YOLOPatchInferenceWrapper
 
 
-wrapper = YOLOInferenceWrapper('yolo11n.pt')
+wrapper = YOLOPatchInferenceWrapper('yolo11n.pt')
 image = cv2.imread('/home/alex/workspace/YOLOPatchFusion/images/zidane3.jpg')
 
 results = wrapper(image)[0]

@@ -9,7 +9,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results, Boxes
 
 
-class YOLOInferenceWrapper:
+class YOLOPatchInferenceWrapper:
     def __init__(self, model_path: str, img_size: int = 640):
         self.model = YOLO(model_path)
         self.img_size = img_size
