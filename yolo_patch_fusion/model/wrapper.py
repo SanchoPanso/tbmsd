@@ -1,5 +1,7 @@
 import cv2
+import torch
 import numpy as np
+from typing import List
 from shapely.geometry import box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
@@ -12,6 +14,28 @@ class YOLOInferenceWrapper:
         self.model = YOLO(model_path)
         self.img_size = img_size
 
+    def __call__(self, source: np.ndarray, overlap: int = 50) -> List[Results]:
+        # Split image into crops
+        crops = self.split_image(source, overlap)
+        
+        # Detect object in each crop separately 
+        detections = []
+        for crop, x_offset, y_offset in crops:
+            crop_detections = self.infer_on_crop(crop)
+            for det in crop_detections:
+                det[:4] += [x_offset, y_offset, x_offset, y_offset]     # Adjust to global coords
+                detections.append(det)
+
+        # Merge all detections into one set
+        merged_detections = self.merge_detections(detections)
+
+        # Transform to format `Results`
+        boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        result = Results(orig_img=source, path=None, names=self.model.names)
+        result.boxes = Boxes(boxes, source.shape[:2])
+
+        return [result]
+    
     def split_image(self, image: np.ndarray, overlap: int = 50):
         h, w, _ = image.shape
         step = self.img_size - overlap
@@ -22,8 +46,8 @@ class YOLOInferenceWrapper:
                 y_end = min(y + self.img_size, h)
                 crops.append((image[y:y_end, x:x_end], x, y))
         return crops
-
-    def infer_on_crop(self, crop: np.ndarray):
+    
+    def infer_on_crop(self, crop: np.ndarray) -> np.ndarray:
         results = self.model(crop, verbose=False)
         xyxy = results[0].boxes.xyxy.cpu().numpy()
         cls = results[0].boxes.cls.cpu().numpy().reshape(-1, 1)
@@ -31,7 +55,7 @@ class YOLOInferenceWrapper:
         final_results = np.concatenate([xyxy, conf, cls], axis=1)
         return final_results  # (xmin, ymin, xmax, ymax, confidence, class)
 
-    def merge_detections(self, detections, iou_threshold=0.5):
+    def merge_detections(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
         geometries = [box(*det[:4]) for det in detections]
         confidences = [det[4] for det in detections]
         classes = [det[5] for det in detections]
@@ -76,28 +100,4 @@ class YOLOInferenceWrapper:
             result.append([xmin, ymin, xmax, ymax, conf, cls])
 
         return result
-
-    def detect(self, image: np.ndarray, overlap: int = 50):
-        crops = self.split_image(image, overlap)
-        detections = []
-        for crop, x_offset, y_offset in crops:
-            crop_detections = self.infer_on_crop(crop)
-            for det in crop_detections:
-                det[:4] += [x_offset, y_offset, x_offset, y_offset]  # Adjust to global coords
-                detections.append(det)
-
-        # Получение объединенных детекций
-        merged_detections = self.merge_detections(detections)
-
-        # Преобразование в формат Results
-        boxes = np.array([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
-        result = Results(orig_img=image, path=None, names=self.model.names)
-        result.boxes = Boxes(boxes, image.shape[:2])
-        return result
-
-
-# Пример использования:
-# wrapper = YOLOInferenceWrapper('yolov8.pt')
-# image = cv2.imread('image.jpg')
-# results = wrapper.detect(image)
-# print(results.boxes)
+    
