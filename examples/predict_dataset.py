@@ -7,7 +7,7 @@ from yolo_patch_fusion.prediction.predict import predict_dataset
 
 images_dir = 'datasets/coco8/images/val'
 labels_dir = 'datasets/coco8/pred/val'
-model = YOLO('yolo11n.pt')
+model = YOLO('yolo11n.pt', task='segment')
 
 predict_dataset(images_dir, labels_dir, model)
 

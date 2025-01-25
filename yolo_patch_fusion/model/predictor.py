@@ -13,7 +13,8 @@ class PatchDetectionPredictor(yolo.detect.DetectionPredictor):
         if 'overlap' in overrides:
             overrides.pop('overlap')
         super().__init__(cfg, overrides, _callbacks)
-        self.img_size = 640
+        self.img_size = 1024
+        self.args.verbose = False
 
     # def __call__(self, source=None, model=None, stream=False, *args, **kwargs):
     #     out = super().__call__(source, model, stream, *args, **kwargs)
@@ -23,6 +24,7 @@ class PatchDetectionPredictor(yolo.detect.DetectionPredictor):
         crops = self.split_image(source, overlap)
         detections = []
         for crop, x_offset, y_offset in crops:
+            print(x_offset, y_offset)
             crop_detections = self.infer_on_crop(crop, model, stream, *args, **kwargs)
             for det in crop_detections:
                 det[:4] += [x_offset, y_offset, x_offset, y_offset]  # Adjust to global coords
