@@ -8,8 +8,8 @@ from yolo_patch_fusion.evaluation.convert import yolo_to_coco
 
 def load_cocogt_from_yolo(yolo_folder: str, 
         class_mapping: dict, 
-        image_width: int = 640, 
-        image_height: int = 640) -> COCO:
+        image_width: int = 1024, 
+        image_height: int = 1024) -> COCO:
     
     gt_data = yolo_to_coco(yolo_folder, class_mapping, image_width, image_height)
 
@@ -26,8 +26,8 @@ def load_cocogt_from_yolo(yolo_folder: str,
 
 def load_cocodt_from_yolo(yolo_folder: str, 
         class_mapping: dict, 
-        image_width: int = 640, 
-        image_height: int = 640) -> COCO:
+        image_width: int = 1024, 
+        image_height: int = 1024) -> COCO:
     
     dt_data = yolo_to_coco(yolo_folder, class_mapping, image_width, image_height)
     

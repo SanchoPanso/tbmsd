@@ -13,7 +13,7 @@ class YOLOPatchInferenceWrapper:
     def __init__(self, model_path: str):
         self.model = YOLO(model_path)
 
-    def __call__(self, source: np.ndarray, img_size: int = 640, overlap: int = 50) -> List[Results]:
+    def __call__(self, source: np.ndarray, img_size: int = 640, overlap: int = 50, merging_policy: str = 'no_gluing') -> List[Results]:
         # Split image into crops
         crops = self.split_image(source, img_size, overlap)
         
@@ -31,7 +31,7 @@ class YOLOPatchInferenceWrapper:
         # Transform to format `Results`
         boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
         result = Results(orig_img=source, path=None, names=self.model.names)
-        result.boxes = Boxes(boxes, source.shape[:2])
+        result.boxes = Boxes(boxes.reshape(-1, 6), source.shape[:2])
 
         return [result]
     
@@ -50,15 +50,21 @@ class YOLOPatchInferenceWrapper:
                 crops.append((image[y:y_end, x:x_end], x, y))
         return crops
     
-    def infer_on_crop(self, crop: np.ndarray) -> np.ndarray:
-        results = self.model(crop, verbose=False)
+    def infer_on_crop(self, crop: np.ndarray, conf=0.25) -> np.ndarray:
+        results = self.model.predict(crop, conf=conf, verbose=False)
         xyxy = results[0].boxes.xyxy.cpu().numpy()
         cls = results[0].boxes.cls.cpu().numpy().reshape(-1, 1)
         conf = results[0].boxes.conf.cpu().numpy().reshape(-1, 1)
         final_results = np.concatenate([xyxy, conf, cls], axis=1)
         return final_results  # (xmin, ymin, xmax, ymax, confidence, class)
 
-    def merge_detections(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
+    def merge_detections(self, detections: List[np.ndarray], iou_threshold=0.5, merging_policy: str = 'no_gluing') -> List[List[float]]:
+        if merging_policy == 'simple_gluing':
+            return self._merge_with_simple_gluing(detections)
+
+        return self._merge_without_gluing(detections)
+
+    def _merge_with_simple_gluing(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
         geometries = [box(*det[:4]) for det in detections]
         confidences = [det[4] for det in detections]
         classes = [det[5] for det in detections]
@@ -103,4 +109,7 @@ class YOLOPatchInferenceWrapper:
             result.append([xmin, ymin, xmax, ymax, conf, cls])
 
         return result
+
+    def _merge_without_gluing(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
+        return detections
     
