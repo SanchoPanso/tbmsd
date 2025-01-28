@@ -18,26 +18,37 @@ class YOLOPatchInferenceWrapper:
         crops = self.split_image(source, img_size, overlap)
         
         # Detect object in each crop separately 
-        detections = []
-        for crop, x_offset, y_offset in crops:
-            crop_detections = self.infer_on_crop(crop)
-            for det in crop_detections:
-                det[:4] += [x_offset, y_offset, x_offset, y_offset]     # Adjust to global coords
-                detections.append(det)
+        crop_results = self.inference_crops(crops)
 
         # Merge all detections into one set
-        merged_detections = self.merge_detections(detections)
+        merged_results = self.merge_detections(crop_results, source)
 
-        # Transform to format `Results`
-        boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
-        result = Results(orig_img=source, path=None, names=self.model.names)
-        result.boxes = Boxes(boxes.reshape(-1, 6), source.shape[:2])
+        # # Transform to format `Results`
+        # boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        # result = Results(orig_img=source, path=None, names=self.model.names)
+        # result.boxes = Boxes(boxes.reshape(-1, 6), source.shape[:2])
 
-        return [result]
+        return [merged_results]
     
     @property
     def names(self):
         return self.model.names
+    
+    def inference_crops(self, crops: List[Tuple[np.ndarray, float, float]]) -> List[Results]:
+        # Detect object in each crop separately 
+        results = []
+        for crop, x_offset, y_offset in crops:
+            crop_detections = self.infer_on_crop(crop)
+            for det in crop_detections:
+                det[:4] += [x_offset, y_offset, x_offset, y_offset]     # Adjust to global coords
+                
+            boxes = torch.tensor([[det[0:6]] for det in crop_detections])  # xyxy + conf + cls
+            result = Results(orig_img=crop, path=None, names=self.model.names)
+            result.boxes = Boxes(boxes.reshape(-1, 6), crop.shape[:2])
+            results.append(result)
+        
+        return results
+
     
     def split_image(self, image: np.ndarray, img_size: int, overlap: int) -> List[Tuple[np.ndarray, float, float]]:
         h, w, _ = image.shape
@@ -58,11 +69,11 @@ class YOLOPatchInferenceWrapper:
         final_results = np.concatenate([xyxy, conf, cls], axis=1)
         return final_results  # (xmin, ymin, xmax, ymax, confidence, class)
 
-    def merge_detections(self, detections: List[np.ndarray], iou_threshold=0.5, merging_policy: str = 'no_gluing') -> List[List[float]]:
-        if merging_policy == 'simple_gluing':
-            return self._merge_with_simple_gluing(detections)
+    def merge_detections(self, crop_results: List[Results], orig_image: np.ndarray, merging_policy: str = 'no_gluing') -> Results:
+        # if merging_policy == 'simple_gluing':
+        #     return self._merge_with_simple_gluing(crop_results, orig_image)
 
-        return self._merge_without_gluing(detections)
+        return self._merge_without_gluing(crop_results, orig_image)
 
     def _merge_with_simple_gluing(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
         geometries = [box(*det[:4]) for det in detections]
@@ -110,6 +121,20 @@ class YOLOPatchInferenceWrapper:
 
         return result
 
-    def _merge_without_gluing(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
-        return detections
+    def _merge_without_gluing(self, crop_results: List[Results], orig_image: np.ndarray) -> Results:
+
+        xyxy_list = [results.boxes.xyxy.cpu().numpy() for results in crop_results]
+        cls_list = [results.boxes.cls.cpu().numpy().reshape(-1, 1) for results in crop_results]
+        conf_list = [results.boxes.conf.cpu().numpy().reshape(-1, 1) for results in crop_results]
+
+        xyxy = np.concatenate(xyxy_list, axis=0)
+        cls = np.concatenate(cls_list, axis=0)
+        conf = np.concatenate(conf_list, axis=0)
+        
+        final_detections = np.concatenate([xyxy, conf, cls], axis=1)
+        boxes = torch.tensor([[det[0:6]] for det in final_detections])  # xyxy + conf + cls
+        result = Results(orig_img=orig_image, path=None, names=self.model.names)
+        result.boxes = Boxes(boxes.reshape(-1, 6), orig_image.shape[:2])
+        
+        return result
     
