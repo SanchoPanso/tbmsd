@@ -1,6 +1,7 @@
 import cv2
 import torch
 import numpy as np
+from enum import Enum
 from typing import List, Sequence
 from yolo_patch_fusion.model.wrapper import YOLOPatchInferenceWrapper
 from ultralytics.engine.results import Results, Boxes
@@ -10,7 +11,12 @@ class MultiPatchInference:
     def __init__(self, wrapper: YOLOPatchInferenceWrapper):
         self.wrapper = wrapper
 
-    def __call__(self, image: np.ndarray, patch_sizes: Sequence[int] = (640,), overlap: int = 50) -> List[Results]:
+    def __call__(
+            self, 
+            image: np.ndarray, 
+            patch_sizes: Sequence[int] = (640,), 
+            overlap: int = 50,
+            multiscale_merging_policy: 'MultiScaleMergingPolicy' = 'include_all') -> List[Results]:
         """
         Выполняет инференс изображения с разными размерами патчей.
         
@@ -19,85 +25,102 @@ class MultiPatchInference:
         :param overlap: Перекрытие между патчами.
         :return: Итоговый объект Results с объединенными детекциями.
         """
-        all_detections = []
+        scale_results = []
 
         for size in patch_sizes:
             # Выполняем инференс для текущего размера патча
             results = self.wrapper(image, size, overlap)[0]
-            all_detections.append(results)
+            scale_results.append(results)
 
         # Объединяем детекции
-        results = self.combine_results(all_detections, image)
+        results = self.combine_results(scale_results, image)
         return [results]
 
-    def combine_results(self, results: List[Results], image: np.ndarray, iou_threshold: float = 0.5) -> Results:
-        """
-        Объединяет результаты инференса, устраняя пересечения с высоким IoU.
-        
-        :param detections: Список всех детекций с разных размеров патчей.
-        :param image: Входное изображение.
-        :param iou_threshold: Порог IoU для объединения детекций.
-        :return: Итоговый объект Results с объединенными детекциями.
-        """
+    def combine_results(
+            self, 
+            scale_results: List[Results], 
+            image: np.ndarray,
+            multiscale_merging_policy: 'MultiScaleMergingPolicy' = 'include_all') -> Results:
 
-        # Преобразование детекций в массив numpy
+        if multiscale_merging_policy == MultiScaleMergingPolicy.nms:
+            return self._merge_nms(scale_results, image)
+
+        return self._merge_include_all(scale_results, image)
+
+    def _merge_include_all(self, scale_results: List[Results], image: np.ndarray) -> Results:
         detections = []
-        for result in results:
+        for result in scale_results:
             for box in result.boxes.data:
                 detections.append(box.cpu().numpy())
         detections = np.array(detections)
-
-        # Если нет детекций, возвращаем пустой результат
-        if len(detections) == 0:
-            return Results(orig_img=image, path=None, names=self.wrapper.model.names)
-
-        # Сортировка по уверенности
-        detections = detections[detections[:, 4].argsort()[::-1]]  # Сортировка по убыванию confidence
-
-        merged_detections = []
-
-        while len(detections) > 0:
-            # Берем детекцию с максимальной уверенностью
-            best_det = detections[0]
-            merged_detections.append(best_det)
-
-            # Рассчитываем IoU с другими детекциями
-            ious = self._calculate_iou(best_det[:4], detections[:, :4])
-
-            # Оставляем только те, что имеют IoU меньше порога
-            detections = detections[ious < iou_threshold]
-
-        # Преобразуем в формат Results
-        boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
+        boxes = torch.tensor(detections)
+        result = Results(orig_img=image, path=None, names=self.wrapper.names)
+        result.boxes = Boxes(boxes.reshape(-1, 6), image.shape[:2])
         
-        final_result = Results(orig_img=image, path=None, names=self.wrapper.model.names)
-        final_result.boxes = Boxes(boxes, image.shape[:2])
+        return result
 
-        return final_result
-
-    @staticmethod
-    def _calculate_iou(box: np.ndarray, boxes: np.ndarray):
-        """
-        Рассчитывает IoU между одной рамкой и набором рамок.
+    def _merge_nms(self, scale_results: List[Results], image: np.ndarray, iou_threshold: float = 0.5) -> Results:
+        all_boxes = []
+        all_scores = []
+        all_classes = []
+        model_ids = []  # Идентификаторы моделей для каждой детекции
         
-        :param box: Одна рамка [xmin, ymin, xmax, ymax].
-        :param boxes: Набор рамок [[xmin, ymin, xmax, ymax], ...].
-        :return: Вектор IoU для каждой рамки.
-        """
-        x1 = np.maximum(box[0], boxes[:, 0])
-        y1 = np.maximum(box[1], boxes[:, 1])
-        x2 = np.minimum(box[2], boxes[:, 2])
-        y2 = np.minimum(box[3], boxes[:, 3])
+        for model_id, result in enumerate(scale_results):
+            if result.boxes is not None:
+                boxes = result.boxes.xyxy  # Координаты боксов (x1, y1, x2, y2)
+                scores = result.boxes.conf  # Уверенность модели в предсказании
+                classes = result.boxes.cls  # Классы объектов
+                
+                all_boxes.append(boxes)
+                all_scores.append(scores)
+                all_classes.append(classes)
+                model_ids.append(np.full(len(boxes), model_id))
+        
+        if not all_boxes:
+            return Results(image=image)  # Если нет детекций, возвращаем пустой объект
+        
+        all_boxes = np.vstack(all_boxes)
+        all_scores = np.hstack(all_scores)
+        all_classes = np.hstack(all_classes)
+        model_ids = np.hstack(model_ids)
+        
+        keep_indices = []
+        suppressed = set()
+        
+        for i in range(len(all_boxes)):
+            if i in suppressed:
+                continue
+            keep_indices.append(i)
+            for j in range(i + 1, len(all_boxes)):
+                if model_ids[i] != model_ids[j]:  # Игнорируем пересечения из одной модели
+                    iou = compute_iou(all_boxes[i], all_boxes[j])
+                    if iou > iou_threshold:
+                        suppressed.add(j)
+        
+        merged_results = Results(image=image)
+        merged_results.boxes = scale_results[0].boxes.__class__(
+            xyxy=all_boxes[keep_indices],
+            conf=all_scores[keep_indices],
+            cls=all_classes[keep_indices]
+        )
+        
+        return merged_results
 
-        # Вычисление площади пересечения
-        intersection = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
 
-        # Вычисление площади рамок
-        box_area = (box[2] - box[0]) * (box[3] - box[1])
-        boxes_area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+def compute_iou(box1: np.ndarray, box2: np.ndarray) -> float:
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union_area = box1_area + box2_area - inter_area
+    
+    return inter_area / union_area if union_area > 0 else 0
 
-        # Вычисление IoU
-        union = box_area + boxes_area - intersection
-        iou = intersection / union
-        return iou
 
+class MultiScaleMergingPolicy(str, Enum):
+    include_all = 'include_all'
+    nms = 'nms'

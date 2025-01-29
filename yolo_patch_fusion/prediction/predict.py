@@ -4,7 +4,7 @@ import tqdm
 import shutil
 from yolo_patch_fusion.model.wrapper import YOLOPatchInferenceWrapper
 
-def predict_dataset(images_dir, labels_dir, model: YOLOPatchInferenceWrapper, merging_policy: str, device: str = 'cpu'):
+def predict_dataset(images_dir, labels_dir, model: YOLOPatchInferenceWrapper, img_size=1024, overlap=0, merging_policy: str = 'no_gluing', device: str = 'cpu'):
 
     if os.path.exists(labels_dir):
         shutil.rmtree(labels_dir)
@@ -13,5 +13,5 @@ def predict_dataset(images_dir, labels_dir, model: YOLOPatchInferenceWrapper, me
     for fn in tqdm.tqdm(sorted(os.listdir(images_dir))):
         name, ext = os.path.splitext(fn)
         img = cv2.imread(os.path.join(images_dir, fn))[:, :, ::-1]
-        results = model(img, img_size=1024, overlap=10, merging_policy=merging_policy)[0]
+        results = model(img, img_size=img_size, overlap=overlap, conf=0.01, merging_policy=merging_policy)[0]
         results.save_txt(os.path.join(labels_dir, name + '.txt'), save_conf=True)

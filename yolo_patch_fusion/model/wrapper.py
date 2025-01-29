@@ -14,12 +14,12 @@ class YOLOPatchInferenceWrapper:
     def __init__(self, model_path: str):
         self.model = YOLO(model_path)
 
-    def __call__(self, source: np.ndarray, img_size: int = 640, overlap: int = 50, merging_policy: str = 'no_gluing') -> List[Results]:
+    def __call__(self, source: np.ndarray, img_size: int = 640, overlap: int = 50, conf: float = 0.25, merging_policy: str = 'no_gluing') -> List[Results]:
         # Split image into crops
         crops = self.split_image(source, img_size, overlap)
         
         # Detect object in each crop separately 
-        crop_results = self.inference_crops(crops)
+        crop_results = self.inference_crops(crops, conf)
 
         # Merge all detections into one set
         merged_results = self.merge_detections(crop_results, source, merging_policy)
@@ -35,11 +35,11 @@ class YOLOPatchInferenceWrapper:
     def names(self):
         return self.model.names
     
-    def inference_crops(self, crops: List[Tuple[np.ndarray, float, float]]) -> List[Results]:
+    def inference_crops(self, crops: List[Tuple[np.ndarray, float, float]], conf: float = 0.25) -> List[Results]:
         # Detect object in each crop separately 
         results = []
         for crop, x_offset, y_offset in crops:
-            crop_detections = self.infer_on_crop(crop)
+            crop_detections = self.infer_on_crop(crop, conf)
             for det in crop_detections:
                 det[:4] += [x_offset, y_offset, x_offset, y_offset]     # Adjust to global coords
                 

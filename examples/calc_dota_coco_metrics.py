@@ -44,6 +44,8 @@ def main():
     summarize(cocoEval)
     show_ap_by_classes(cocoEval, classes)
 
+    print(cocoEval.eval['recall'][0, :, 0, -1])
+
 
 def show_ap_by_classes(coco_eval: COCOeval, classes: dict):
     print('\nAverage Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=1000 ]')
@@ -53,6 +55,7 @@ def show_ap_by_classes(coco_eval: COCOeval, classes: dict):
         class_p = precision[0, :, i, 0, -1]
         class_ap = np.mean(class_p)
         print(f'{c}{' ' * max(0, 20 - len(c))}{class_ap}')
+
 
 if __name__ == '__main__':
     main()
