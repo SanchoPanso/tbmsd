@@ -1,6 +1,7 @@
 import cv2
 import torch
 import numpy as np
+from enum import Enum
 from typing import List, Tuple
 from shapely.geometry import box
 from shapely.ops import unary_union
@@ -21,7 +22,7 @@ class YOLOPatchInferenceWrapper:
         crop_results = self.inference_crops(crops)
 
         # Merge all detections into one set
-        merged_results = self.merge_detections(crop_results, source)
+        merged_results = self.merge_detections(crop_results, source, merging_policy)
 
         # # Transform to format `Results`
         # boxes = torch.tensor([[det[0], det[1], det[2], det[3], det[4], det[5]] for det in merged_detections])  # xyxy + conf + cls
@@ -42,7 +43,7 @@ class YOLOPatchInferenceWrapper:
             for det in crop_detections:
                 det[:4] += [x_offset, y_offset, x_offset, y_offset]     # Adjust to global coords
                 
-            boxes = torch.tensor([[det[0:6]] for det in crop_detections])  # xyxy + conf + cls
+            boxes = torch.tensor(crop_detections.reshape(-1, 1, 6))  # xyxy + conf + cls
             result = Results(orig_img=crop, path=None, names=self.model.names)
             result.boxes = Boxes(boxes.reshape(-1, 6), crop.shape[:2])
             results.append(result)
@@ -69,19 +70,24 @@ class YOLOPatchInferenceWrapper:
         final_results = np.concatenate([xyxy, conf, cls], axis=1)
         return final_results  # (xmin, ymin, xmax, ymax, confidence, class)
 
-    def merge_detections(self, crop_results: List[Results], orig_image: np.ndarray, merging_policy: str = 'no_gluing') -> Results:
-        # if merging_policy == 'simple_gluing':
-        #     return self._merge_with_simple_gluing(crop_results, orig_image)
+    def merge_detections(self, crop_results: List[Results], orig_image: np.ndarray, merging_policy: 'MergingPolicy' = 'no_gluing') -> Results:
+        if merging_policy == MergingPolicy.frame_agnostic_gluing:
+            return self._merge_with_simple_gluing(crop_results, orig_image)
 
         return self._merge_without_gluing(crop_results, orig_image)
 
-    def _merge_with_simple_gluing(self, detections: List[np.ndarray], iou_threshold=0.5) -> List[List[float]]:
-        geometries = [box(*det[:4]) for det in detections]
-        confidences = [det[4] for det in detections]
-        classes = [det[5] for det in detections]
+    def _merge_with_simple_gluing(self, crop_results: List[Results], orig_image: np.ndarray) -> List[List[float]]:
+        
+        xyxy_list = [results.boxes.xyxy.cpu().numpy() for results in crop_results]
+        cls_list = [results.boxes.cls.cpu().numpy().reshape(-1, 1) for results in crop_results]
+        conf_list = [results.boxes.conf.cpu().numpy().reshape(-1, 1) for results in crop_results]
 
+        geometries = np.concatenate(xyxy_list, axis=0)
+        classes = np.concatenate(cls_list, axis=0)
+        confidences = np.concatenate(conf_list, axis=0)
+        
         # Построение индекса для быстрого объединения
-        indexed_geometries = [(geom, conf, cls) for geom, conf, cls in zip(geometries, confidences, classes)]
+        indexed_geometries = [(box(*geom), conf, cls) for geom, conf, cls in zip(geometries, confidences, classes)]
         tree = STRtree([item[0] for item in indexed_geometries])
         
         merged_objects = []
@@ -114,11 +120,14 @@ class YOLOPatchInferenceWrapper:
             merged_objects.append((combined_geom.bounds, weighted_conf, most_common_class))
 
         # Формирование списка итоговых объектов
-        result = []
+        final_detections = []
         for bounds, conf, cls in merged_objects:
             xmin, ymin, xmax, ymax = bounds
-            result.append([xmin, ymin, xmax, ymax, conf, cls])
+            final_detections.append([xmin, ymin, xmax, ymax, conf[0], cls[0]])
 
+        boxes = torch.tensor(np.array(final_detections))
+        result = Results(orig_img=orig_image, path=None, names=self.model.names)
+        result.boxes = Boxes(boxes.reshape(-1, 6), orig_image.shape[:2])
         return result
 
     def _merge_without_gluing(self, crop_results: List[Results], orig_image: np.ndarray) -> Results:
@@ -138,3 +147,8 @@ class YOLOPatchInferenceWrapper:
         
         return result
     
+
+class MergingPolicy(str, Enum):
+    no_gluing = 'no_gluing'
+    frame_agnostic_gluing = 'frame_agnostic_gluing'
+    frame_aware_gluing = 'frame_aware_gluing'
