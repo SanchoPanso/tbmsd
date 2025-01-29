@@ -73,6 +73,9 @@ class YOLOPatchInferenceWrapper:
     def merge_detections(self, crop_results: List[Results], orig_image: np.ndarray, merging_policy: 'MergingPolicy' = 'no_gluing') -> Results:
         if merging_policy == MergingPolicy.frame_agnostic_gluing:
             return self._merge_with_simple_gluing(crop_results, orig_image)
+        
+        if merging_policy == MergingPolicy.frame_aware_gluing:
+            return self._merge_with_frame_aware_gluing(crop_results, orig_image)
 
         return self._merge_without_gluing(crop_results, orig_image)
 
@@ -145,6 +148,70 @@ class YOLOPatchInferenceWrapper:
         result = Results(orig_img=orig_image, path=None, names=self.model.names)
         result.boxes = Boxes(boxes.reshape(-1, 6), orig_image.shape[:2])
         
+        return result
+    
+    def _merge_with_frame_aware_gluing(
+            self, 
+            crop_results: List[Results], 
+            orig_image: np.ndarray) -> List[List[float]]:
+        
+        xyxy_list = [results.boxes.xyxy.cpu().numpy() for results in crop_results]
+        cls_list = [results.boxes.cls.cpu().numpy().reshape(-1, 1) for results in crop_results]
+        conf_list = [results.boxes.conf.cpu().numpy().reshape(-1, 1) for results in crop_results]
+    
+        geometries = np.concatenate(xyxy_list, axis=0)
+        classes = np.concatenate(cls_list, axis=0)
+        confidences = np.concatenate(conf_list, axis=0)
+
+        frame_ids = []
+        for i, results in enumerate(crop_results):
+            frame_ids += [i] * len(results.boxes.xyxy.cpu().numpy())
+    
+        # Построение индекса для быстрого объединения
+        indexed_geometries = [
+            (box(*geom), conf, cls) for geom, conf, cls in zip(geometries, confidences, classes)
+        ]
+        tree = STRtree([item[0] for item in indexed_geometries])
+        
+        merged_objects = []
+        used = set()
+
+        for i, (geom, conf, cls) in enumerate(indexed_geometries):
+            if i in used:
+                continue
+
+            overlap_indices = tree.query(geom)
+            overlap_indices = [idx for idx in overlap_indices if cls == indexed_geometries[idx][2]]
+            overlap_indices = [idx for idx in overlap_indices if frame_ids[i] != frame_ids[idx] or i == idx]
+            used.update(overlap_indices)
+
+            # Объединение объектов
+            combined_geom = unary_union([indexed_geometries[idx][0] for idx in overlap_indices])
+            area_weights = [indexed_geometries[idx][0].area for idx in overlap_indices]
+            total_area = sum(area_weights)
+
+            # Расчет уверенности как средневзвешенной
+            weighted_conf = sum(
+                indexed_geometries[idx][1] * area_weights[i] / total_area
+                for i, idx in enumerate(overlap_indices)
+            )
+            # Класс выбирается как наиболее частый
+            most_common_class = max(
+                (indexed_geometries[idx][2] for idx in overlap_indices),
+                key=lambda cls: sum(1 for idx in overlap_indices if indexed_geometries[idx][2] == cls)
+            )
+
+            merged_objects.append((combined_geom.bounds, weighted_conf, most_common_class))
+
+        # Формирование списка итоговых объектов
+        final_detections = []
+        for bounds, conf, cls in merged_objects:
+            xmin, ymin, xmax, ymax = bounds
+            final_detections.append([xmin, ymin, xmax, ymax, conf[0], cls[0]])
+
+        boxes = torch.tensor(np.array(final_detections))
+        result = Results(orig_img=orig_image, path=None, names=self.model.names)
+        result.boxes = Boxes(boxes.reshape(-1, 6), orig_image.shape[:2])
         return result
     
 
