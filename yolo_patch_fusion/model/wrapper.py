@@ -144,7 +144,7 @@ class YOLOPatchInferenceWrapper:
         conf = np.concatenate(conf_list, axis=0)
         
         final_detections = np.concatenate([xyxy, conf, cls], axis=1)
-        boxes = torch.tensor([[det[0:6]] for det in final_detections])  # xyxy + conf + cls
+        boxes = torch.tensor(final_detections)  # xyxy + conf + cls
         result = Results(orig_img=orig_image, path=None, names=self.model.names)
         result.boxes = Boxes(boxes.reshape(-1, 6), orig_image.shape[:2])
         
@@ -195,6 +195,10 @@ class YOLOPatchInferenceWrapper:
                 indexed_geometries[idx][1] * area_weights[i] / total_area
                 for i, idx in enumerate(overlap_indices)
             )
+            # weighted_conf = min(
+            #     indexed_geometries[idx][1]
+            #     for i, idx in enumerate(overlap_indices)
+            # )
             # Класс выбирается как наиболее частый
             most_common_class = max(
                 (indexed_geometries[idx][2] for idx in overlap_indices),

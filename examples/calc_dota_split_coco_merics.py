@@ -1,8 +1,7 @@
 import os
 import json
-import cv2
-import tqdm
 import numpy as np
+import matplotlib.pyplot as plt
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from yolo_patch_fusion.evaluation.convert import yolo_to_coco
@@ -30,24 +29,17 @@ def main():
     # cocoGt = load_cocogt_from_yolo('/mnt/c/Users/Alex/Downloads/temp_labels', classes)
     # cocoDt = load_cocodt_from_yolo('tmp_pred', classes)
 
-    image_dir = '/mnt/d/datasets/dota/DOTAv1/images/val'
-    image_sizes = {}
-    for fn in tqdm.tqdm(os.listdir(image_dir)):
-        img = cv2.imread(os.path.join(image_dir, fn))
-        name, ext = os.path.splitext(fn)
-        image_sizes[name] = (img.shape[1], img.shape[0]) 
-
-    cocoGt = load_cocogt_from_yolo('/mnt/d/datasets/dota/DOTAv1/labels/val_detect', classes, image_sizes=image_sizes)
-    cocoDt = load_cocodt_from_yolo('dotav1_val_predicts_1024', classes, None, image_sizes=image_sizes)
+    cocoGt = load_cocogt_from_yolo('/mnt/d/datasets/dota/DOTAv1-split/labels/val', classes)
+    cocoDt = load_cocodt_from_yolo('dotav1_val_split_predicts_1024', classes, cocoGt)
 
     # Инициализация COCOeval
     cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
 
     cocoEval.params.maxDets = [1, 10, 100, 1000]
-
-    # for i in range(0, 1000, 200):
-    #     cocoEval.params.areaRng.append([i ** 2, (i + 200) ** 2])
-    #     cocoEval.params.areaRngLbl.append(f"{i} ** 2 - {i + 200} ** 2")
+    
+    for i in range(0, 1000, 100):
+        cocoEval.params.areaRng.append([i ** 2, (i + 100) ** 2])
+        cocoEval.params.areaRngLbl.append(f"{i} ** 2 - {i + 100} ** 2")
 
     # Выполняем вычисление метрик
     cocoEval.evaluate()
@@ -55,9 +47,18 @@ def main():
     
     # cocoEval.summarize()
     summarize(cocoEval)
-    show_ap_by_classes(cocoEval, classes)
+    # show_ap_by_classes(cocoEval, classes)
 
     print(cocoEval.eval['recall'][0, :, 0, -1])
+
+
+    for i, c in classes.items():
+        precision = cocoEval.eval['precision']
+        class_p = precision[0, :, i, 4:, -1]
+        class_ap_per_size = np.mean(class_p, axis=0)
+        plt.plot(class_ap_per_size)
+        plt.title(c)
+        plt.savefig('show.jpg')
 
 
 def show_ap_by_classes(coco_eval: COCOeval, classes: dict):

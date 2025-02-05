@@ -8,10 +8,11 @@ from yolo_patch_fusion.evaluation.convert import yolo_to_coco
 
 def load_cocogt_from_yolo(yolo_folder: str, 
         class_mapping: dict, 
+        image_sizes = None,
         image_width: int = 1024, 
         image_height: int = 1024) -> COCO:
     
-    gt_data = yolo_to_coco(yolo_folder, class_mapping, image_width, image_height)
+    gt_data = yolo_to_coco(yolo_folder, class_mapping, image_sizes, image_width, image_height)
 
     for ann in gt_data["annotations"]:
         if 'score' in ann:
@@ -25,11 +26,35 @@ def load_cocogt_from_yolo(yolo_folder: str,
 
 
 def load_cocodt_from_yolo(yolo_folder: str, 
-        class_mapping: dict, 
+        class_mapping: dict, coco_gt: COCO = None,
+        image_sizes = None,
         image_width: int = 1024, 
         image_height: int = 1024) -> COCO:
     
-    dt_data = yolo_to_coco(yolo_folder, class_mapping, image_width, image_height)
+    dt_data = yolo_to_coco(yolo_folder, class_mapping, image_sizes, image_width, image_height)
+
+    if coco_gt:
+        image_id_conformity = {}
+        for k, img in coco_gt.imgs.items():
+            gt_fn = img['file_name']
+            gt_image_id = img['id']
+            
+            for dt_img in dt_data['images']:
+                if dt_img['file_name'] != gt_fn:
+                    continue
+
+                dt_image_id = dt_img['id']
+                image_id_conformity[dt_image_id] = gt_image_id
+                break
+        
+        new_annotations = []
+        for annot in dt_data['annotations']:
+            if annot['image_id'] in image_id_conformity:
+                annot['image_id'] = image_id_conformity[annot['image_id']]
+                new_annotations.append(annot)
+
+        dt_data['images'] = list(coco_gt.imgs.values())
+        dt_data['annotations'] = new_annotations
     
     for ann in dt_data["annotations"]:
         if 'score' not in ann:

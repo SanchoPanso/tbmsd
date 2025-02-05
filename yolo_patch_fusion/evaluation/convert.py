@@ -3,6 +3,7 @@ import os
 def yolo_to_coco(
         yolo_folder: str, 
         class_mapping: dict, 
+        image_sizes=None,
         image_width: int = 640, 
         image_height: int = 640) -> dict:
     
@@ -32,11 +33,17 @@ def yolo_to_coco(
     for filename in sorted(os.listdir(yolo_folder)):
         if filename.endswith(".txt"):
             # Создаем запись для изображения
+
+            name, _ = os.path.splitext(filename)
+            if image_sizes is not None and name in image_sizes:
+                width, height = image_sizes[name]
+            else:
+                width, height = image_width, image_height
             image_entry = {
                 "id": image_id,
                 "file_name": filename.replace(".txt", ".jpg"),
-                "width": image_width,
-                "height": image_height
+                "width": width,
+                "height": height
             }
             coco_images.append(image_entry)
 
@@ -51,10 +58,10 @@ def yolo_to_coco(
                     score = float(parts[5]) if len(parts) == 6 else None
 
                     # Преобразование координат и размеров
-                    abs_width = bbox_width * image_width
-                    abs_height = bbox_height * image_height
-                    abs_x = (x_center * image_width) - (abs_width / 2)
-                    abs_y = (y_center * image_height) - (abs_height / 2)
+                    abs_width = bbox_width * width
+                    abs_height = bbox_height * height
+                    abs_x = (x_center * width) - (abs_width / 2)
+                    abs_y = (y_center * height) - (abs_height / 2)
 
                     # Создаем аннотацию в формате COCO
                     coco_annotation = {
