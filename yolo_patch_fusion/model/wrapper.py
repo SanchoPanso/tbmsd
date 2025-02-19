@@ -63,6 +63,7 @@ class YOLOPatchInferenceWrapper:
         return crops
     
     def infer_on_crop(self, crop: np.ndarray, conf=0.25) -> np.ndarray:
+        crop = cv2.resize(crop, (max(crop.shape[1], 5), max(crop.shape[0], 5)))
         results = self.model.predict(crop, conf=conf, verbose=False)
         xyxy = results[0].boxes.xyxy.cpu().numpy()
         cls = results[0].boxes.cls.cpu().numpy().reshape(-1, 1)
@@ -183,8 +184,12 @@ class YOLOPatchInferenceWrapper:
             overlap_indices = tree.query(geom)
             overlap_indices = [idx for idx in overlap_indices if cls == indexed_geometries[idx][2]]
             overlap_indices = [idx for idx in overlap_indices if frame_ids[i] != frame_ids[idx] or i == idx]
+
             used.update(overlap_indices)
 
+            if len(overlap_indices) > 1:
+                pass
+            
             # Объединение объектов
             combined_geom = unary_union([indexed_geometries[idx][0] for idx in overlap_indices])
             area_weights = [indexed_geometries[idx][0].area for idx in overlap_indices]

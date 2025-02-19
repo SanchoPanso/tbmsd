@@ -38,16 +38,17 @@ def main():
         image_sizes[name] = (img.shape[1], img.shape[0]) 
 
     cocoGt = load_cocogt_from_yolo('/mnt/d/datasets/dota/DOTAv1/labels/val_detect', classes, image_sizes=image_sizes)
-    cocoDt = load_cocodt_from_yolo('dotav1_val_predicts_1024', classes, None, image_sizes=image_sizes)
+    cocoDt = load_cocodt_from_yolo('predictions/dotav1_1024', classes, None, image_sizes=image_sizes)
 
     # Инициализация COCOeval
     cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
 
     cocoEval.params.maxDets = [1, 10, 100, 1000]
 
-    # for i in range(0, 1000, 200):
-    #     cocoEval.params.areaRng.append([i ** 2, (i + 200) ** 2])
-    #     cocoEval.params.areaRngLbl.append(f"{i} ** 2 - {i + 200} ** 2")
+    step = 340
+    for i in range(0, 1020, step):
+        cocoEval.params.areaRng.append([i ** 2, (i + step) ** 2])
+        cocoEval.params.areaRngLbl.append(f"{i} ** 2 - {i + step} ** 2")
 
     # Выполняем вычисление метрик
     cocoEval.evaluate()
@@ -56,9 +57,43 @@ def main():
     # cocoEval.summarize()
     summarize(cocoEval)
     show_ap_by_classes(cocoEval, classes)
-
     print(cocoEval.eval['recall'][0, :, 0, -1])
 
+    for i, c in classes.items():
+        precision = cocoEval.eval['precision']
+        print(c)
+
+        for j in range(3):
+            ap = np.mean(precision[0, :, i, 4 + j, -1])
+            print(ap)
+
+
+    calib_data = {str(i): {'square_points': [], 'precision_points': []} for i in range(len(classes))}
+    for i, c in classes.items():
+        precision = cocoEval.eval['precision']
+
+        calib_data[str(i)]['square_points'].append(0)
+        calib_data[str(i)]['precision_points'].append(0)
+        prev_ap = 0
+
+        for j in range(3):
+            ap = np.mean(precision[0, :, i, 4 + j, -1])
+            if ap == -1:
+                ap = prev_ap
+            else:
+                prev_ap = ap
+
+            calib_data[str(i)]['square_points'].append((340 * j + 170) ** 2)
+            calib_data[str(i)]['precision_points'].append(ap)
+
+        calib_data[str(i)]['square_points'].append(1024 ** 2)
+        calib_data[str(i)]['precision_points'].append(calib_data[str(i)]['precision_points'][-1])
+
+        calib_data[str(i)]['precision_points'][0] = calib_data[str(i)]['precision_points'][1]
+    
+    with open('calib_size_1024.json', 'w') as f:
+        json.dump(calib_data, f, indent=4)
+        
 
 def show_ap_by_classes(coco_eval: COCOeval, classes: dict):
     print('\nAverage Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=1000 ]')

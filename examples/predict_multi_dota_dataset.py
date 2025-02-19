@@ -10,12 +10,13 @@ from yolo_patch_fusion.prediction.predict import predict_dataset
 
 def main():
     images_dir = "/mnt/c/Users/Alex/Downloads/DOTAv1/images/val"
-    labels_dir = "dotav1_val_predicts_1024"
+    labels_dir = "predictions/dotav1_1024"
 
     # images_dir = "/mnt/d/datasets/dota/DOTAv1-split/images/val"
-    # labels_dir = "dotav1_val_split_predicts_1024"
+    # labels_dir = "predictions/dotav1_split_1024"
+    
     merging_policy = 'no_gluing' # 'frame_aware_gluing'
-    multiscale_merging_policy = 'nms'
+    multiscale_merging_policy = 'include_all'
 
     model = YOLOPatchInferenceWrapper('/home/alex/workspace/YOLOPatchFusion/dotav1_det/weights/best.pt')
     inferencer = MultiPatchInference(model)
@@ -30,7 +31,7 @@ def main():
         
         results = inferencer(
             img, 
-            patch_sizes=(1024, 2056), 
+            patch_sizes=(1024,), 
             overlap=0, 
             merging_policy=merging_policy, 
             multiscale_merging_policy=multiscale_merging_policy,

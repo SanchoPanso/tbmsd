@@ -1,5 +1,6 @@
 from yolo_patch_fusion.prediction.predict import predict_dataset_multi_scale
 from yolo_patch_fusion.evaluation.eval_yolo import eval_yolo
+from yolo_patch_fusion.model.calibrator import SquareCalibrator
 
 
 def main():
@@ -26,15 +27,21 @@ def main():
         14: 'swimming pool',
     }
 
+    calibrators = None # [
+    #     SquareCalibrator('calib_size_1024.json'),
+    # ]
+
     predict_and_eval(
         classes,
         images_dir,
         gt_labels_dir,
         dt_labels_dir,
         model_path,
-        patch_sizes=(1024, 2056),
-        overlap=0,
-        multiscale_merging_policy='nms',
+        patch_sizes=(1024, 2048),
+        overlap=20,
+        multiscale_merging_policy='hybrid_nms_v2',
+        merging_policy='no_gluing',
+        calibrators=calibrators,
     )
 
 
@@ -47,7 +54,8 @@ def predict_and_eval(
         patch_sizes=(1024, 2056),
         overlap=0,
         merging_policy: str = 'no_gluing',
-        multiscale_merging_policy='nms'):
+        multiscale_merging_policy='include_all',
+        calibrators=None):
     
     predict_dataset_multi_scale(
         images_dir,
@@ -57,6 +65,7 @@ def predict_and_eval(
         overlap,
         merging_policy,
         multiscale_merging_policy,
+        calibrators=calibrators,
     )
 
     eval_yolo(
